@@ -28,11 +28,17 @@ interface hypermap-cacher {
     protocol-version: string,
   }
 
+  record get-logs-by-range-request {
+    from-block: u64,
+    to-block: option<u64>, // If None, signifies to the latest available/relevant cached block.
+  }
+
   // Defines the types of requests that can be sent to the Hypermap Cacher process.
   variant cacher-request {
     get-manifest,
     get-log-cache-content(string),
     get-status,
+    get-logs-by-range(get-logs-by-range-request),
     // // Request to trigger a cache update manually (optional, primarily timer-driven).
     // trigger-cache-update,
   }
@@ -53,6 +59,7 @@ interface hypermap-cacher {
     get-manifest(option<manifest>),
     get-log-cache-content(result<option<string>, string>),
     get-status(cacher-status),
+    get-logs-by-range(result<string, string>),
   }
 }
 

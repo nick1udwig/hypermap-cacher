@@ -1,4 +1,8 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    cmp::{max, min},
+    collections::HashMap,
+    str::FromStr,
+};
 
 use alloy_primitives::keccak256;
 use serde::{Deserialize, Serialize};
@@ -27,7 +31,7 @@ const DEFAULT_BLOCK_BATCH_SIZE: u64 = 500;
 const DEFAULT_CACHE_INTERVAL_S: u64 = 2 * 500; // 500 blocks, 2s / block = 1000s;
 const MAX_LOG_RETRIES: u8 = 3;
 const RETRY_DELAY_S: u64 = 10;
-const LOG_ITERATION_DELAY_S: u64 = 1;
+const LOG_ITERATION_DELAY_MS: u64 = 200;
 
 // Internal representation of LogsMetadata, similar to WIT but for Rust logic.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -183,7 +187,7 @@ impl State {
         while self.last_cached_block != current_chain_head {
             self.cache_logs_and_update_manifest_step(hypermap, Some(current_chain_head))?;
 
-            std::thread::sleep(std::time::Duration::from_secs(LOG_ITERATION_DELAY_S));
+            std::thread::sleep(std::time::Duration::from_millis(LOG_ITERATION_DELAY_MS));
         }
 
         Ok(())
@@ -565,6 +569,80 @@ fn handle_request(our: &Address, state: &mut State, request: CacherRequest) -> a
                 our_address: our.to_string(),
             };
             CacherResponse::GetStatus(status)
+        }
+        CacherRequest::GetLogsByRange(req_params) => {
+            let mut relevant_caches: Vec<LogCacheInternal> = Vec::new();
+            let req_from_block = req_params.from_block;
+            // If req_params.to_block is None, we effectively want to go up to the highest block available in caches.
+            // For simplicity in overlap calculation, we can treat None as u64::MAX here.
+            let req_to_block_opt = req_params.to_block;
+
+            for item in state.manifest.items.values() {
+                // Skip items that don't have an actual file (e.g., empty log ranges not written to disk).
+                if item.file_name.is_empty() {
+                    continue;
+                }
+
+                let cache_from = match item.metadata.from_block.parse::<u64>() {
+                    Ok(b) => b,
+                    Err(_) => {
+                        warn!(
+                            "Could not parse from_block for cache item {}: {}",
+                            item.file_name, item.metadata.from_block
+                        );
+                        continue;
+                    }
+                };
+                let cache_to = match item.metadata.to_block.parse::<u64>() {
+                    Ok(b) => b,
+                    Err(_) => {
+                        warn!(
+                            "Could not parse to_block for cache item {}: {}",
+                            item.file_name, item.metadata.to_block
+                        );
+                        continue;
+                    }
+                };
+
+                // Determine effective request to_block for overlap check
+                let effective_req_to_block = req_to_block_opt.unwrap_or(u64::MAX);
+
+                // Check for overlap: max(start1, start2) <= min(end1, end2)
+                if max(req_from_block, cache_from) <= min(effective_req_to_block, cache_to) {
+                    // This cache file overlaps with the requested range.
+                    let file_vfs_path = format!("{}/{}", state.drive_path, item.file_name);
+                    match vfs::open_file(&file_vfs_path, false, None) {
+                        Ok(file) => match file.read() {
+                            Ok(content_bytes) => {
+                                match serde_json::from_slice::<LogCacheInternal>(&content_bytes) {
+                                    Ok(log_cache) => relevant_caches.push(log_cache),
+                                    Err(e) => {
+                                        error!(
+                                            "Failed to deserialize LogCacheInternal from {}: {:?}",
+                                            item.file_name, e
+                                        );
+                                        // Decide: return error or skip this cache? For now, skip.
+                                    }
+                                }
+                            }
+                            Err(e) => error!("Failed to read VFS file {}: {:?}", item.file_name, e),
+                        },
+                        Err(e) => error!("Failed to open VFS file {}: {:?}", item.file_name, e),
+                    }
+                }
+            }
+
+            // Sort caches by their from_block.
+            relevant_caches
+                .sort_by_key(|cache| cache.metadata.from_block.parse::<u64>().unwrap_or(0));
+
+            match serde_json::to_string(&relevant_caches) {
+                Ok(json_string) => CacherResponse::GetLogsByRange(Ok(json_string)),
+                Err(e) => CacherResponse::GetLogsByRange(Err(format!(
+                    "Failed to serialize relevant caches: {}",
+                    e
+                ))),
+            }
         }
     };
 
