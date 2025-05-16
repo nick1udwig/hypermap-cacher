@@ -29,6 +29,7 @@ fn init(our: Address) {
         "eth:distro:sys",
         "http-server:distro:sys",
         "sign:sign:sys",
+        "timer:distro:sys",
         "vfs:distro:sys",
     ];
 

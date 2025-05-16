@@ -677,16 +677,14 @@ fn main_loop(
         }
     }
 
-    // Set up the main caching timer if not already live.
-    if !state.is_cache_timer_live {
-        info!(
-            "Setting cache timer for {} seconds.",
-            state.cache_interval_s
-        );
-        timer::set_timer(state.cache_interval_s * 1000, Some(b"cache_cycle".to_vec()));
-        state.is_cache_timer_live = true;
-        state.save();
-    }
+    // Set up the main caching timer.
+    info!(
+        "Setting cache timer for {} seconds.",
+        state.cache_interval_s
+    );
+    timer::set_timer(state.cache_interval_s * 1000, Some(b"cache_cycle".to_vec()));
+    state.is_cache_timer_live = true;
+    state.save();
 
     loop {
         let Ok(message) = await_message() else {
@@ -735,14 +733,13 @@ fn main_loop(
             if source.process == ProcessId::from_str("timer:distro:sys").unwrap() {
                 if message.context() == Some(b"cache_cycle") {
                     info!("Cache timer triggered.");
-                    state.is_cache_timer_live = false; // Timer is consumed
+                    state.is_cache_timer_live = false;
                     match state.cache_logs_and_update_manifest(hypermap) {
                         Ok(_) => info!("Periodic cache cycle complete."),
                         Err(e) => error!("Error during periodic cache cycle: {:?}", e),
                     }
                     // Reset the timer for the next cycle
                     if !state.is_cache_timer_live {
-                        // Check again in case cache_logs took long
                         timer::set_timer(
                             state.cache_interval_s * 1000,
                             Some(b"cache_cycle".to_vec()),
