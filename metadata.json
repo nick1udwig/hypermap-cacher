@@ -5,7 +5,7 @@
     "properties": {
         "package_name": "hypermap-cacher",
         "current_version": "0.1.0",
-        "publisher": "nick.hypr",
+        "publisher": "sys",
 
         "mirrors": [],
         "code_hashes": {

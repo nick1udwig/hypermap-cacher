@@ -62,7 +62,7 @@ interface hypermap-cacher {
     }
 }
 
-world hypermap-cacher-nick-dot-hypr-v0 {
+world hypermap-cacher-sys-v0 {
     import sign;
     import hypermap-cacher;
     include process-v1;
