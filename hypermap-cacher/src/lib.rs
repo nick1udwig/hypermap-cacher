@@ -451,8 +451,8 @@ fn http_handler(
                 )
             }
         }
-    } else if path.starts_with("/log_cache/") {
-        let filename = path.trim_start_matches("/log_cache/");
+    } else if path.starts_with("/log-cache/") {
+        let filename = path.trim_start_matches("/log-cache/");
         if filename.is_empty() || filename.contains("..") {
             // Basic security check
             return Ok((
@@ -703,11 +703,8 @@ fn main_loop(
                     // Potentially send an error response back if possible/expected
                     continue;
                 };
-                let (http_response, body) = http_handler(
-                    state,
-                    &http_request.bound_path(None),
-                    &http_request.method()?,
-                )?;
+                let (http_response, body) =
+                    http_handler(state, &http_request.path()?, &http_request.method()?)?;
                 Response::new()
                     .body(serde_json::to_vec(&http_response).unwrap())
                     .blob_bytes(body)
@@ -777,12 +774,12 @@ fn init(our: Address) {
         .bind_http_path("/manifest.json", bind_config.clone())
         .expect("Failed to bind /manifest.json");
     server
-        .bind_http_path("/log_cache/*", bind_config.clone())
-        .expect("Failed to bind /log_cache/*");
+        .bind_http_path("/log-cache/*", bind_config.clone())
+        .expect("Failed to bind /log-cache/*");
     server
         .bind_http_path("/status", bind_config.clone())
         .expect("Failed to bind /status");
-    info!("Bound HTTP paths: /manifest, /log_cache/*, /status");
+    info!("Bound HTTP paths: /manifest, /log-cache/*, /status");
 
     let mut state = State::load(&drive_path);
 
